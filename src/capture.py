@@ -3,18 +3,19 @@ import mss.tools
 import threading
 import time
 import numpy as np
+import pyautogui
+import cv2
 
 class ScreenCapture:
     def __init__(self):
-        self._frame = None          # último frame capturado
+        self._frame = None
         self._lock = threading.Lock()
         self._running = False
         self._thread = None
         self.fps = 30
-        self.monitor_index = 1      # 1 = monitor principal no mss
+        self.monitor_index = 1
 
     def start(self, encoder):
-        """Inicia o loop de captura em thread separada."""
         self._running = True
         self._thread = threading.Thread(
             target=self._capture_loop,
@@ -27,7 +28,6 @@ class ScreenCapture:
         self._running = False
 
     def get_frame(self):
-        """Retorna o frame mais recente de forma thread-safe."""
         with self._lock:
             return self._frame
 
@@ -36,15 +36,18 @@ class ScreenCapture:
         with mss.mss() as sct:
             while self._running:
                 t0 = time.monotonic()
-
-                # mss.monitors[0] = área total 
-                # mss.monitors[1] = primeiro monitor, [2] = segundo
                 monitor = sct.monitors[self.monitor_index]
-
-                # grab() retorna um objeto ScreenShot com pixels em BGRA
                 screenshot = sct.grab(monitor)
-
                 img = np.array(screenshot)
+
+                # Desenha o cursor do host no frame capturado
+                mx, my = pyautogui.position()
+                rel_x = mx - monitor["left"]
+                rel_y = my - monitor["top"]
+
+                if 0 <= rel_x < monitor["width"] and 0 <= rel_y < monitor["height"]:
+                    cv2.circle(img, (rel_x, rel_y), 6, (0, 0, 255), -1)
+                    cv2.circle(img, (rel_x, rel_y), 6, (255, 255, 255), 2)
 
                 frame = encoder.encode(img)
                 with self._lock:
@@ -56,7 +59,6 @@ class ScreenCapture:
                     time.sleep(sleep)
 
     def list_monitors(self):
-        """Retorna lista de monitores disponíveis."""
         with mss.mss() as sct:
             return [
                 {"index": i, "width": m["width"], "height": m["height"]}
